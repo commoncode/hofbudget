@@ -1,9 +1,7 @@
-import base64
-import json
-import urllib2
-from urlparse import urljoin
+import requests
 
 from django.core.management.base import BaseCommand, CommandError
+from django.conf import settings
 
 from hofbudget.models import Client, Project
 
@@ -13,38 +11,41 @@ from hofbudget.models import Client, Project
 class Command(BaseCommand):
     help = 'Prints Clients Hours Blocks'
 
-    def handle(self, *args, **options):
-        api_token = '0cd32d2dedb4f1fbe5c3f23a284168e1'
+    def __init__(self, *args, **kwargs):
+        super(Command, self).__init__(*args, **kwargs)
+        self.base_url = 'https://www.toggl.com/api/v8/workspaces/179261/'
 
-        base_url = 'https://www.toggl.com/api/v8/workspaces/179261/'
-        clients_url = urljoin(base_url, 'clients')
-        projects_url = urljoin(base_url, 'projects')
+    def _fetch_clients(self):
+        request = requests.get(
+            self.base_url + '/clients',
+            headers={'content-type': 'application/json'},
+            auth=requests.auth.HTTPBasicAuth(settings.TOGGL_TOKEN, 'api_token')
+        )
 
-        auth = base64.encodestring('{}:{}'.format(api_token, 'api_token'))[:-1]
+        return request.json()
 
-        request = urllib2.Request(clients_url)
-        request.add_header('Authorization', 'Basic {}'.format(auth))
+    def _fetch_projects(self):
+        request = requests.get(
+            self.base_url + '/projects',
+            headers={'content-type': 'application/json'},
+            auth=requests.auth.HTTPBasicAuth(settings.TOGGL_TOKEN, 'api_token')
+        )
 
-        response = urllib2.urlopen(request)
-        response = json.loads(response.read())
+        return request.json()
 
+    def _sync_clients(self):
         clients = []
 
-        for obj in response:
+        for obj in self._fetch_clients:
             client = Client(name=obj.get('name'), toggl_id=obj.get('id'))
             clients.append(client)
 
         Client.objects.bulk_create(clients)
 
-        request = urllib2.Request(projects_url)
-        request.add_header('Authorization', 'Basic {}'.format(auth))
-
-        response = urllib2.urlopen(request)
-        response = json.loads(response.read())
-
+    def _sync_projects(self):
         projects = []
 
-        for obj in response:
+        for obj in self._fetch_projects():
             if not obj.get('cid'):
                 continue
 
@@ -55,4 +56,5 @@ class Command(BaseCommand):
 
         Project.objects.bulk_create(projects)
 
+    def handle(self, *args, **options):
         self.stdout.write('CommonCode')
