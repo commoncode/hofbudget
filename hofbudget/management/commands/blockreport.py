@@ -56,16 +56,16 @@ class Command(BaseCommand):
         project_ids = ','.join(map(str, Project.objects.all().values_list(
             'toggl_id', flat=True)))
 
-        params = '?{}'.format(urlencode({
+        params = urlencode({
             'user_agent': 'hofbudget',
             'workspace_id': settings.TOGGL_WORKSPACE,
             'since': '2013-07-01',
             'client_ids': client_ids,
             'project_ids': project_ids
-        }))
+        })
 
         request = requests.get(
-            'https://toggl.com/reports/api/v2/summary' + params,
+            'https://toggl.com/reports/api/v2/summary?' + params,
             auth=requests.auth.HTTPBasicAuth(settings.TOGGL_TOKEN, 'api_token')
         ).json()
 
