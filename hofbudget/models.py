@@ -5,6 +5,7 @@ from django.db import models
 class Client(models.Model):
     name = models.CharField(max_length=90)
     toggl_id = models.PositiveSmallIntegerField(primary_key=True)
+    time = models.PositiveIntegerField(default=0)
 
     def __unicode__(self):
         return self.name

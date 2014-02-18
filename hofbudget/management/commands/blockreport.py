@@ -8,13 +8,17 @@ from django.conf import settings
 from hofbudget.models import Client, Project
 
 
+def to_hours(milliseconds):
+    return milliseconds / (1000.0 * 60.0 * 60.0)
+
+
 # Create your commands here
 class Command(BaseCommand):
-    help = 'Prints Clients Hours Blocks'
+    help = u'Prints Clients Hours Blocks'
 
     def __init__(self, *args, **kwargs):
         super(Command, self).__init__(*args, **kwargs)
-        self.base_url = 'https://www.toggl.com/api/v8/workspaces/{}/'.format(
+        self.base_url = u'https://www.toggl.com/api/v8/workspaces/{}/'.format(
             settings.TOGGL_WORKSPACE)
 
     def _fetch(self, kind):
@@ -26,8 +30,8 @@ class Command(BaseCommand):
         Client.objects.all().delete()
         clients = []
 
-        for obj in self._fetch('clients'):
-            client = Client(name=obj.get('name'), toggl_id=obj.get('id'))
+        for obj in self._fetch(u'clients'):
+            client = Client(name=obj.get(u'name'), toggl_id=obj.get('id'))
             clients.append(client)
 
         Client.objects.bulk_create(clients)
@@ -36,12 +40,12 @@ class Command(BaseCommand):
         Project.objects.all().delete()
         projects = []
 
-        for obj in self._fetch('projects'):
-            if not obj.get('cid'):
+        for obj in self._fetch(u'projects'):
+            if not obj.get(u'cid'):
                 continue
 
-            project = Project(name=obj.get('name'), toggl_id=obj.get('id'))
-            project.client_id = obj.get('cid')
+            project = Project(name=obj.get(u'name'), toggl_id=obj.get('id'))
+            project.client_id = obj.get(u'cid')
 
             projects.append(project)
 
@@ -51,24 +55,41 @@ class Command(BaseCommand):
         self._sync_clients()
         self._sync_projects()
 
-        client_ids = ','.join(map(str, Client.objects.all().values_list(
-            'toggl_id', flat=True)))
-        project_ids = ','.join(map(str, Project.objects.all().values_list(
-            'toggl_id', flat=True)))
+        client_ids = u','.join(map(str, Client.objects.all().values_list(
+            u'toggl_id', flat=True)))
+        project_ids = u','.join(map(str, Project.objects.all().values_list(
+            u'toggl_id', flat=True)))
 
         params = urlencode({
-            'user_agent': 'hofbudget',
-            'workspace_id': settings.TOGGL_WORKSPACE,
-            'since': '2013-07-01',
-            'client_ids': client_ids,
-            'project_ids': project_ids
+            u'user_agent': 'hofbudget',
+            u'workspace_id': settings.TOGGL_WORKSPACE,
+            u'since': '2013-07-01',
+            u'client_ids': client_ids,
+            u'project_ids': project_ids,
+            u'task_ids': 0
         })
 
         request = requests.get(
-            'https://toggl.com/reports/api/v2/summary?' + params,
+            u'https://toggl.com/reports/api/v2/summary?' + params,
             auth=requests.auth.HTTPBasicAuth(settings.TOGGL_TOKEN, 'api_token')
         ).json()
 
-        total = request.get('total_grand') / (1000.0 * 60.0 * 60.0)
+        total = to_hours(request.get(u'total_grand'))
 
-        self.stdout.write(str(total))
+        clients = {
+            u'total': total
+        }
+
+        for obj in request.get(u'data'):
+            name = obj.get(u'title').get(u'client')
+            time = to_hours(obj.get(u'time'))
+
+            client = clients.get(name)
+
+            if client:
+                client += time
+            else:
+                clients[name] = time
+
+        from pprint import pprint
+        pprint(clients)
