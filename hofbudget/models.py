@@ -13,6 +13,7 @@ class Client(models.Model):
 
 class Project(models.Model):
     client = models.ForeignKey('Client', related_name='projects')
+    estimated = models.PositiveIntegerField(default=0)
     name = models.CharField(max_length=90)
     toggl_id = models.PositiveSmallIntegerField(primary_key=True)
 

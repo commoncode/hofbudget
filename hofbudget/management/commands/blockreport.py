@@ -1,3 +1,4 @@
+from pprint import pprint
 from urllib import urlencode
 
 import requests
@@ -22,7 +23,8 @@ class Command(BaseCommand):
             settings.TOGGL_WORKSPACE)
 
     def _fetch(self, kind):
-        return requests.get(self.base_url + kind,
+        return requests.get(
+            self.base_url + kind,
             auth=requests.auth.HTTPBasicAuth(settings.TOGGL_TOKEN, 'api_token')
         ).json()
 
@@ -44,7 +46,8 @@ class Command(BaseCommand):
             if not obj.get(u'cid'):
                 continue
 
-            project = Project(name=obj.get(u'name'), toggl_id=obj.get('id'))
+            project = Project(name=obj.get(u'name'), toggl_id=obj.get('id'),
+                estimated=obj.get('estimated_hours', 0))
             project.client_id = obj.get(u'cid')
 
             projects.append(project)
@@ -55,10 +58,12 @@ class Command(BaseCommand):
         self._sync_clients()
         self._sync_projects()
 
+        projects = Project.objects.all()
+
         client_ids = u','.join(map(str, Client.objects.all().values_list(
             u'toggl_id', flat=True)))
-        project_ids = u','.join(map(str, Project.objects.all().values_list(
-            u'toggl_id', flat=True)))
+        project_ids = u','.join(map(str, projects.values_list(u'toggl_id',
+            flat=True)))
 
         params = urlencode({
             u'user_agent': 'hofbudget',
@@ -77,19 +82,32 @@ class Command(BaseCommand):
         total = to_hours(request.get(u'total_grand'))
 
         clients = {
-            u'total': total
+            u'total_grand': total
         }
 
         for obj in request.get(u'data'):
-            name = obj.get(u'title').get(u'client')
+            client_name = obj.get(u'title').get(u'client')
+            project_name = obj.get(u'title').get(u'project')
             time = to_hours(obj.get(u'time'))
 
-            client = clients.get(name)
+            client = clients.get(client_name)
+            estimated = projects.get(toggl_id=obj.get(u'id')).estimated
 
             if client:
-                client += time
+                client[u'total'] += time
+                client[project_name] = {
+                    'budgeted': time,
+                    'estimated': 0,
+                    'balance': estimated - time
+                }
             else:
-                clients[name] = time
+                clients[client_name] = {
+                    project_name: {
+                        'budgeted': time,
+                        'estimated': 0,
+                        'balance': estimated - time
+                    },
+                    u'total': time
+                }
 
-        from pprint import pprint
         pprint(clients)
